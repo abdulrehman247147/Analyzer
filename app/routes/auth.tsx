@@ -75,7 +75,7 @@ const Auth = () => {
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[url('/images/bg-auth.png')] bg-cover">
+    <main className="flex min-h-screen items-center justify-center bg-[url('/images/bg-auth.svg')] bg-cover">
       <div className="gradient-border shadow-lg">
         <section className="flex flex-col gap-8 rounded-2xl bg-white p-10">
           <div className="flex flex-col items-center gap-2 text-center">

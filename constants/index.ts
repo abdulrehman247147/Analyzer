@@ -3,7 +3,7 @@ export const resumes: Resume[] = [
     id: "1",
     companyName: "Google",
     jobTitle: "Frontend Developer",
-    imagePath: "/images/resume-1.png",
+    imagePath: "/images/resume_01.png",
     resumePath: "/resumes/resume-1.pdf",
     feedback: {
       overallScore: 85,
@@ -33,7 +33,7 @@ export const resumes: Resume[] = [
     id: "2",
     companyName: "Microsoft",
     jobTitle: "Cloud Engineer",
-    imagePath: "/images/resume-2.png",
+    imagePath: "/images/resume_02.png",
     resumePath: "/resumes/resume-2.pdf",
     feedback: {
       overallScore: 55,
@@ -63,7 +63,7 @@ export const resumes: Resume[] = [
     id: "3",
     companyName: "Apple",
     jobTitle: "iOS Developer",
-    imagePath: "/images/resume-3.png",
+    imagePath: "/images/resume_03.png",
     resumePath: "/resumes/resume-3.pdf",
     feedback: {
       overallScore: 75,
@@ -145,20 +145,26 @@ export const prepareInstructions = ({
   jobDescription: string;
   AIResponseFormat: string;
 }) => `
-You are an expert in ATS (Applicant Tracking System) and resume analysis.
+ You are an expert in ATS (Applicant Tracking System) and resume analysis.
 
-Analyze and rate this resume, then suggest how to improve it.
+  Please analyze and rate this resume and suggest how to improve it.
 
-The rating can be low when the resume has serious problems. Be thorough and specific. Use the job description when it is provided.
+  The rating can be low if the resume is bad.
 
-Job title:
-${jobTitle}
+  Be thorough and detailed. Don't be afraid to point out any mistakes or areas for improvement.
 
-Job description:
-${jobDescription}
+  If there is a lot to improve, don't hesitate to give low scores. This is to help the user to improve their resume.
 
-Return feedback in this format:
-${AIResponseFormat}
+  If available, use the job description for the job user is applying to to give more detailed feedback.
 
-Return only a valid JSON object. Do not include Markdown, code fences, comments, or additional text.
-`;
+  If provided, take the job description into consideration.
+
+  The job title is: ${jobTitle}
+
+  The job description is: ${jobDescription}
+
+  Provide the feedback using the following format: ${AIResponseFormat}
+
+  Return the analysis as a JSON object, without any other text and without the backticks.
+
+  Do not include any other text or comments.`;

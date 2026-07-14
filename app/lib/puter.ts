@@ -1,5 +1,98 @@
 import { create } from "zustand";
 
+interface FSItem {
+  id: string;
+  uid: string;
+  name: string;
+  path: string;
+  is_dir: boolean;
+  parent_id: string;
+  parent_uid: string;
+  created: number;
+  modified: number;
+  accessed: number;
+  size: number | null;
+  writable: boolean;
+}
+
+interface PuterUser {
+  uuid: string;
+  username: string;
+}
+
+interface KVItem {
+  key: string;
+  value: string;
+}
+
+interface ChatFileContent {
+  type: "file";
+  puter_path: string;
+}
+
+interface ChatTextContent {
+  type: "text";
+  text: string;
+}
+
+type ChatMessageContent =
+  | ChatFileContent
+  | ChatTextContent;
+
+interface ChatMessage {
+  role: "user" | "assistant" | "system";
+  content: string | ChatMessageContent[];
+}
+
+interface PuterChatOptions {
+  model?: string;
+  stream?: boolean;
+  max_tokens?: number;
+  temperature?: number;
+  tools?: Array<{
+    type: "function";
+    function: {
+      name: string;
+      description: string;
+      parameters: {
+        type: string;
+        properties: Record<string, unknown>;
+      };
+    };
+  }>;
+}
+
+interface AIResponseContentItem {
+  type?: string;
+  text?: string;
+}
+
+interface AIResponse {
+  index?: number;
+
+  message: {
+    role: string;
+    content:
+      | string
+      | AIResponseContentItem[];
+
+    refusal?: null | string;
+    annotations?: unknown[];
+  };
+
+  logprobs?: null | unknown;
+  finish_reason?: string;
+
+  usage?: Array<{
+    type: string;
+    model: string;
+    amount: number;
+    cost: number;
+  }>;
+
+  via_ai_chat_service?: boolean;
+}
+
 declare global {
   interface Window {
     puter: {
@@ -9,33 +102,61 @@ declare global {
         signIn: () => Promise<void>;
         signOut: () => Promise<void>;
       };
+
       fs: {
         write: (
           path: string,
-          data: string | File | Blob
+          data: string | File | Blob,
         ) => Promise<File | undefined>;
-        read: (path: string) => Promise<Blob>;
-        upload: (file: File[] | Blob[]) => Promise<FSItem>;
-        delete: (path: string) => Promise<void>;
-        readdir: (path: string) => Promise<FSItem[] | undefined>;
+
+        read: (
+          path: string,
+        ) => Promise<Blob>;
+
+        upload: (
+          files: File[] | Blob[],
+        ) => Promise<FSItem | FSItem[]>;
+
+        delete: (
+          path: string,
+        ) => Promise<void>;
+
+        readdir: (
+          path: string,
+        ) => Promise<FSItem[] | undefined>;
       };
+
       ai: {
         chat: (
           prompt: string | ChatMessage[],
-          imageURL?: string | PuterChatOptions,
-          testMode?: boolean,
-          options?: PuterChatOptions
-        ) => Promise<Object>;
+          options?: PuterChatOptions,
+        ) => Promise<AIResponse>;
+
         img2txt: (
           image: string | File | Blob,
-          testMode?: boolean
+          testMode?: boolean,
         ) => Promise<string>;
       };
+
       kv: {
-        get: (key: string) => Promise<string | null>;
-        set: (key: string, value: string) => Promise<boolean>;
-        delete: (key: string) => Promise<boolean>;
-        list: (pattern: string, returnValues?: boolean) => Promise<string[]>;
+        get: (
+          key: string,
+        ) => Promise<string | null>;
+
+        set: (
+          key: string,
+          value: string,
+        ) => Promise<boolean>;
+
+        delete: (
+          key: string,
+        ) => Promise<boolean>;
+
+        list: (
+          pattern: string,
+          returnValues?: boolean,
+        ) => Promise<string[] | KVItem[]>;
+
         flush: () => Promise<boolean>;
       };
     };
@@ -46,6 +167,7 @@ interface PuterStore {
   isLoading: boolean;
   error: string | null;
   puterReady: boolean;
+
   auth: {
     user: PuterUser | null;
     isAuthenticated: boolean;
@@ -55,40 +177,66 @@ interface PuterStore {
     checkAuthStatus: () => Promise<boolean>;
     getUser: () => PuterUser | null;
   };
+
   fs: {
     write: (
       path: string,
-      data: string | File | Blob
+      data: string | File | Blob,
     ) => Promise<File | undefined>;
-    read: (path: string) => Promise<Blob | undefined>;
-    upload: (file: File[] | Blob[]) => Promise<FSItem | undefined>;
-    delete: (path: string) => Promise<void>;
-    readDir: (path: string) => Promise<FSItem[] | undefined>;
+
+    read: (
+      path: string,
+    ) => Promise<Blob | undefined>;
+
+    upload: (
+      files: File[] | Blob[],
+    ) => Promise<FSItem | FSItem[] | undefined>;
+
+    delete: (
+      path: string,
+    ) => Promise<void>;
+
+    readDir: (
+      path: string,
+    ) => Promise<FSItem[] | undefined>;
   };
+
   ai: {
     chat: (
       prompt: string | ChatMessage[],
-      imageURL?: string | PuterChatOptions,
-      testMode?: boolean,
-      options?: PuterChatOptions
+      options?: PuterChatOptions,
     ) => Promise<AIResponse | undefined>;
+
     feedback: (
       path: string,
-      message: string
-    ) => Promise<AIResponse | undefined>;
+      message: string,
+    ) => Promise<AIResponse>;
+
     img2txt: (
       image: string | File | Blob,
-      testMode?: boolean
+      testMode?: boolean,
     ) => Promise<string | undefined>;
   };
+
   kv: {
-    get: (key: string) => Promise<string | null | undefined>;
-    set: (key: string, value: string) => Promise<boolean | undefined>;
-    delete: (key: string) => Promise<boolean | undefined>;
+    get: (
+      key: string,
+    ) => Promise<string | null | undefined>;
+
+    set: (
+      key: string,
+      value: string,
+    ) => Promise<boolean | undefined>;
+
+    delete: (
+      key: string,
+    ) => Promise<boolean | undefined>;
+
     list: (
       pattern: string,
-      returnValues?: boolean
+      returnValues?: boolean,
     ) => Promise<string[] | KVItem[] | undefined>;
+
     flush: () => Promise<boolean | undefined>;
   };
 
@@ -96,361 +244,666 @@ interface PuterStore {
   clearError: () => void;
 }
 
-const getPuter = (): typeof window.puter | null =>
-  typeof window !== "undefined" && window.puter ? window.puter : null;
+const getPuter = (): typeof window.puter | null => {
+  if (
+    typeof window === "undefined" ||
+    !window.puter
+  ) {
+    return null;
+  }
 
-export const usePuterStore = create<PuterStore>((set, get) => {
-  const setError = (msg: string) => {
-    set({
-      error: msg,
-      isLoading: false,
-      auth: {
-        user: null,
-        isAuthenticated: false,
-        signIn: get().auth.signIn,
-        signOut: get().auth.signOut,
-        refreshUser: get().auth.refreshUser,
-        checkAuthStatus: get().auth.checkAuthStatus,
-        getUser: get().auth.getUser,
-      },
-    });
-  };
+  return window.puter;
+};
 
-  const checkAuthStatus = async (): Promise<boolean> => {
-    const puter = getPuter();
-    if (!puter) {
-      setError("Puter.js not available");
-      return false;
+const getUnknownErrorMessage = (
+  error: unknown,
+): string => {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (typeof error === "string") {
+    return error;
+  }
+
+  if (
+    error &&
+    typeof error === "object"
+  ) {
+    const possibleError = error as {
+      message?: string;
+      error?: string;
+      code?: string;
+    };
+
+    if (possibleError.message) {
+      return possibleError.message;
     }
 
-    set({ isLoading: true, error: null });
+    if (possibleError.error) {
+      return possibleError.error;
+    }
+
+    if (possibleError.code) {
+      return possibleError.code;
+    }
 
     try {
-      const isSignedIn = await puter.auth.isSignedIn();
-      if (isSignedIn) {
-        const user = await puter.auth.getUser();
-        set({
-          auth: {
-            user,
-            isAuthenticated: true,
-            signIn: get().auth.signIn,
-            signOut: get().auth.signOut,
-            refreshUser: get().auth.refreshUser,
-            checkAuthStatus: get().auth.checkAuthStatus,
-            getUser: () => user,
-          },
-          isLoading: false,
-        });
-        return true;
-      } else {
-        set({
-          auth: {
-            user: null,
-            isAuthenticated: false,
-            signIn: get().auth.signIn,
-            signOut: get().auth.signOut,
-            refreshUser: get().auth.refreshUser,
-            checkAuthStatus: get().auth.checkAuthStatus,
-            getUser: () => null,
-          },
-          isLoading: false,
-        });
-        return false;
-      }
-    } catch (err) {
-      const msg =
-        err instanceof Error ? err.message : "Failed to check auth status";
-      setError(msg);
-      return false;
+      return JSON.stringify(error);
+    } catch {
+      return "An unknown Puter error occurred.";
     }
-  };
+  }
 
-  const signIn = async (): Promise<void> => {
-    const puter = getPuter();
-    if (!puter) {
-      setError("Puter.js not available");
-      return;
-    }
+  return "An unknown Puter error occurred.";
+};
 
-    set({ isLoading: true, error: null });
-
-    try {
-      await puter.auth.signIn();
-      await checkAuthStatus();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Sign in failed";
-      setError(msg);
-    }
-  };
-
-  const signOut = async (): Promise<void> => {
-    const puter = getPuter();
-    if (!puter) {
-      setError("Puter.js not available");
-      return;
-    }
-
-    set({ isLoading: true, error: null });
-
-    try {
-      await puter.auth.signOut();
-      set({
-        auth: {
-          user: null,
-          isAuthenticated: false,
-          signIn: get().auth.signIn,
-          signOut: get().auth.signOut,
-          refreshUser: get().auth.refreshUser,
-          checkAuthStatus: get().auth.checkAuthStatus,
-          getUser: () => null,
-        },
-        isLoading: false,
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Sign out failed";
-      setError(msg);
-    }
-  };
-
-  const refreshUser = async (): Promise<void> => {
-    const puter = getPuter();
-    if (!puter) {
-      setError("Puter.js not available");
-      return;
-    }
-
-    set({ isLoading: true, error: null });
-
-    try {
-      const user = await puter.auth.getUser();
+export const usePuterStore =
+  create<PuterStore>((set, get) => {
+    const updateAuthState = (
+      user: PuterUser | null,
+      isAuthenticated: boolean,
+    ) => {
       set({
         auth: {
           user,
-          isAuthenticated: true,
+          isAuthenticated,
           signIn: get().auth.signIn,
           signOut: get().auth.signOut,
-          refreshUser: get().auth.refreshUser,
-          checkAuthStatus: get().auth.checkAuthStatus,
+          refreshUser:
+            get().auth.refreshUser,
+          checkAuthStatus:
+            get().auth.checkAuthStatus,
           getUser: () => user,
         },
+      });
+    };
+
+    const setError = (
+      message: string,
+    ) => {
+      console.error(
+        "Puter store error:",
+        message,
+      );
+
+      set({
+        error: message,
         isLoading: false,
       });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to refresh user";
-      setError(msg);
-    }
-  };
+    };
 
-  const init = (): void => {
-    const puter = getPuter();
-    if (puter) {
-      set({ puterReady: true });
-      checkAuthStatus();
-      return;
-    }
+    const checkAuthStatus =
+      async (): Promise<boolean> => {
+        const puter = getPuter();
 
-    const interval = setInterval(() => {
-      if (getPuter()) {
-        clearInterval(interval);
-        set({ puterReady: true });
-        checkAuthStatus();
+        if (!puter) {
+          setError(
+            "Puter.js is not available.",
+          );
+
+          return false;
+        }
+
+        set({
+          isLoading: true,
+          error: null,
+        });
+
+        try {
+          const isSignedIn =
+            await puter.auth.isSignedIn();
+
+          if (!isSignedIn) {
+            updateAuthState(null, false);
+
+            set({
+              isLoading: false,
+            });
+
+            return false;
+          }
+
+          const user =
+            await puter.auth.getUser();
+
+          updateAuthState(user, true);
+
+          set({
+            isLoading: false,
+            error: null,
+          });
+
+          return true;
+        } catch (error) {
+          const message =
+            getUnknownErrorMessage(error);
+
+          setError(message);
+
+          return false;
+        }
+      };
+
+    const signIn =
+      async (): Promise<void> => {
+        const puter = getPuter();
+
+        if (!puter) {
+          setError(
+            "Puter.js is not available.",
+          );
+
+          return;
+        }
+
+        set({
+          isLoading: true,
+          error: null,
+        });
+
+        try {
+          await puter.auth.signIn();
+          await checkAuthStatus();
+        } catch (error) {
+          setError(
+            getUnknownErrorMessage(error),
+          );
+        }
+      };
+
+    const signOut =
+      async (): Promise<void> => {
+        const puter = getPuter();
+
+        if (!puter) {
+          setError(
+            "Puter.js is not available.",
+          );
+
+          return;
+        }
+
+        set({
+          isLoading: true,
+          error: null,
+        });
+
+        try {
+          await puter.auth.signOut();
+
+          updateAuthState(null, false);
+
+          set({
+            isLoading: false,
+            error: null,
+          });
+        } catch (error) {
+          setError(
+            getUnknownErrorMessage(error),
+          );
+        }
+      };
+
+    const refreshUser =
+      async (): Promise<void> => {
+        const puter = getPuter();
+
+        if (!puter) {
+          setError(
+            "Puter.js is not available.",
+          );
+
+          return;
+        }
+
+        set({
+          isLoading: true,
+          error: null,
+        });
+
+        try {
+          const user =
+            await puter.auth.getUser();
+
+          updateAuthState(user, true);
+
+          set({
+            isLoading: false,
+            error: null,
+          });
+        } catch (error) {
+          setError(
+            getUnknownErrorMessage(error),
+          );
+        }
+      };
+
+    const init = (): void => {
+      const existingPuter = getPuter();
+
+      if (existingPuter) {
+        set({
+          puterReady: true,
+        });
+
+        void checkAuthStatus();
+
+        return;
       }
-    }, 100);
 
-    setTimeout(() => {
-      clearInterval(interval);
-      if (!getPuter()) {
-        setError("Puter.js failed to load within 10 seconds");
+      const interval =
+        window.setInterval(() => {
+          if (!getPuter()) {
+            return;
+          }
+
+          window.clearInterval(interval);
+
+          set({
+            puterReady: true,
+          });
+
+          void checkAuthStatus();
+        }, 100);
+
+      window.setTimeout(() => {
+        window.clearInterval(interval);
+
+        if (!getPuter()) {
+          setError(
+            "Puter.js failed to load within 10 seconds.",
+          );
+        }
+      }, 10000);
+    };
+
+    const write = async (
+      path: string,
+      data: string | File | Blob,
+    ) => {
+      const puter = getPuter();
+
+      if (!puter) {
+        throw new Error(
+          "Puter.js is not available.",
+        );
       }
-    }, 10000);
-  };
 
-  const write = async (path: string, data: string | File | Blob) => {
-    const puter = getPuter();
-    if (!puter) {
-      setError("Puter.js not available");
-      return;
+      return puter.fs.write(path, data);
+    };
+
+    const readDir = async (
+      path: string,
+    ) => {
+      const puter = getPuter();
+
+      if (!puter) {
+        throw new Error(
+          "Puter.js is not available.",
+        );
+      }
+
+      return puter.fs.readdir(path);
+    };
+
+    const readFile = async (
+      path: string,
+    ) => {
+      const puter = getPuter();
+
+      if (!puter) {
+        throw new Error(
+          "Puter.js is not available.",
+        );
+      }
+
+      return puter.fs.read(path);
+    };
+
+    const upload = async (
+      files: File[] | Blob[],
+    ) => {
+      const puter = getPuter();
+
+      if (!puter) {
+        throw new Error(
+          "Puter.js is not available.",
+        );
+      }
+
+      if (!files.length) {
+        throw new Error(
+          "No files were provided for upload.",
+        );
+      }
+
+      return puter.fs.upload(files);
+    };
+
+    const deleteFile = async (
+      path: string,
+    ) => {
+      const puter = getPuter();
+
+      if (!puter) {
+        throw new Error(
+          "Puter.js is not available.",
+        );
+      }
+
+      return puter.fs.delete(path);
+    };
+
+    const chat = async (
+      prompt: string | ChatMessage[],
+      options?: PuterChatOptions,
+    ): Promise<AIResponse | undefined> => {
+      const puter = getPuter();
+
+      if (!puter) {
+        throw new Error(
+          "Puter.js is not available.",
+        );
+      }
+
+      try {
+        const response =
+          await puter.ai.chat(
+            prompt,
+            options,
+          );
+
+        return response;
+      } catch (error) {
+        console.error(
+          "Puter chat failed:",
+          error,
+        );
+
+        throw new Error(
+          getUnknownErrorMessage(error),
+        );
+      }
+    };
+
+const feedback = async (
+  path: string,
+  message: string,
+): Promise<AIResponse> => {
+  const puter = getPuter();
+
+  if (!puter) {
+    throw new Error(
+      "Puter.js is not available.",
+    );
+  }
+
+  if (!path.trim()) {
+    throw new Error(
+      "The uploaded resume path is missing.",
+    );
+  }
+
+  if (!message.trim()) {
+    throw new Error(
+      "The resume analysis instructions are empty.",
+    );
+  }
+
+  try {
+    console.log(
+      "Extracting resume text from:",
+      path,
+    );
+
+    /*
+     * Extract the text first because some chat models
+     * do not reliably read attached PDF files.
+     */
+    const resumeText =
+      await puter.ai.img2txt(path);
+
+    console.log(
+      "Extracted resume text:",
+      resumeText,
+    );
+
+    if (
+      !resumeText ||
+      !resumeText.trim()
+    ) {
+      throw new Error(
+        "No readable text could be extracted from the PDF. Try using a text-based PDF rather than a scanned image.",
+      );
     }
-    return puter.fs.write(path, data);
-  };
 
-  const readDir = async (path: string) => {
-    const puter = getPuter();
-    if (!puter) {
-      setError("Puter.js not available");
-      return;
-    }
-    return puter.fs.readdir(path);
-  };
+    const completePrompt = `
+You are analyzing a candidate's resume for a specific job.
 
-  const readFile = async (path: string) => {
-    const puter = getPuter();
-    if (!puter) {
-      setError("Puter.js not available");
-      return;
-    }
-    return puter.fs.read(path);
-  };
+IMPORTANT INSTRUCTIONS:
+- The complete resume text is included below.
+- Do not claim that the resume is missing.
+- Evaluate the resume against the supplied job title and job description.
+- Return only valid JSON.
+- Do not use Markdown code fences.
+- Follow the requested JSON structure exactly.
+- Every score must be a number between 0 and 100.
 
-  const upload = async (files: File[] | Blob[]) => {
-    const puter = getPuter();
-    if (!puter) {
-      setError("Puter.js not available");
-      return;
-    }
-    return puter.fs.upload(files);
-  };
+RESUME TEXT:
+--------------------
+${resumeText}
+--------------------
 
-  const deleteFile = async (path: string) => {
-    const puter = getPuter();
-    if (!puter) {
-      setError("Puter.js not available");
-      return;
-    }
-    return puter.fs.delete(path);
-  };
+ANALYSIS INSTRUCTIONS:
+--------------------
+${message}
+--------------------
+`;
 
-  const chat = async (
-    prompt: string | ChatMessage[],
-    imageURL?: string | PuterChatOptions,
-    testMode?: boolean,
-    options?: PuterChatOptions
-  ) => {
-    const puter = getPuter();
-    if (!puter) {
-      setError("Puter.js not available");
-      return;
-    }
-    // return puter.ai.chat(prompt, imageURL, testMode, options);
-    return puter.ai.chat(prompt, imageURL, testMode, options) as Promise<
-      AIResponse | undefined
-    >;
-  };
+    console.log(
+      "Sending extracted resume text to AI.",
+    );
 
-  const feedback = async (path: string, message: string) => {
-    const puter = getPuter();
-    if (!puter) {
-      setError("Puter.js not available");
-      return;
-    }
-
-    return puter.ai.chat(
-      [
+    const response =
+      await puter.ai.chat(
+        completePrompt,
         {
-          role: "user",
-          content: [
-            {
-              type: "file",
-              puter_path: path,
-            },
-            {
-              type: "text",
-              text: message,
-            },
-          ],
+          model: "gpt-5-nano",
+          stream: false,
         },
-      ],
-      { model: "claude-sonnet-4" }
-    ) as Promise<AIResponse | undefined>;
-  };
+      );
 
-  const img2txt = async (image: string | File | Blob, testMode?: boolean) => {
-    const puter = getPuter();
-    if (!puter) {
-      setError("Puter.js not available");
-      return;
-    }
-    return puter.ai.img2txt(image, testMode);
-  };
+    console.log(
+      "Puter AI response:",
+      response,
+    );
 
-  const getKV = async (key: string) => {
-    const puter = getPuter();
-    if (!puter) {
-      setError("Puter.js not available");
-      return;
+    if (
+      !response ||
+      !response.message
+    ) {
+      throw new Error(
+        "Puter AI returned an invalid response.",
+      );
     }
-    return puter.kv.get(key);
-  };
 
-  const setKV = async (key: string, value: string) => {
-    const puter = getPuter();
-    if (!puter) {
-      setError("Puter.js not available");
-      return;
-    }
-    return puter.kv.set(key, value);
-  };
+    return response as AIResponse;
+  } catch (error) {
+    console.error(
+      "Puter resume feedback failed:",
+      error,
+    );
 
-  const deleteKV = async (key: string) => {
-    const puter = getPuter();
-    if (!puter) {
-      setError("Puter.js not available");
-      return;
+    if (error instanceof Error) {
+      throw error;
     }
-    return puter.kv.delete(key);
-  };
 
-  const listKV = async (pattern: string, returnValues?: boolean) => {
-    const puter = getPuter();
-    if (!puter) {
-      setError("Puter.js not available");
-      return;
-    }
-    if (returnValues === undefined) {
-      returnValues = false;
-    }
-    return puter.kv.list(pattern, returnValues);
-  };
+    if (
+      error &&
+      typeof error === "object"
+    ) {
+      const puterError =
+        error as {
+          message?: string;
+          error?: string;
+          code?: string;
+        };
 
-  const flushKV = async () => {
-    const puter = getPuter();
-    if (!puter) {
-      setError("Puter.js not available");
-      return;
+      throw new Error(
+        puterError.message ||
+          puterError.error ||
+          puterError.code ||
+          JSON.stringify(error),
+      );
     }
-    return puter.kv.flush();
-  };
 
-  return {
-    isLoading: true,
-    error: null,
-    puterReady: false,
-    auth: {
-      user: null,
-      isAuthenticated: false,
-      signIn,
-      signOut,
-      refreshUser,
-      checkAuthStatus,
-      getUser: () => get().auth.user,
-    },
-    fs: {
-      write: (path: string, data: string | File | Blob) => write(path, data),
-      read: (path: string) => readFile(path),
-      readDir: (path: string) => readDir(path),
-      upload: (files: File[] | Blob[]) => upload(files),
-      delete: (path: string) => deleteFile(path),
-    },
-    ai: {
-      chat: (
-        prompt: string | ChatMessage[],
-        imageURL?: string | PuterChatOptions,
-        testMode?: boolean,
-        options?: PuterChatOptions
-      ) => chat(prompt, imageURL, testMode, options),
-      feedback: (path: string, message: string) => feedback(path, message),
-      img2txt: (image: string | File | Blob, testMode?: boolean) =>
-        img2txt(image, testMode),
-    },
-    kv: {
-      get: (key: string) => getKV(key),
-      set: (key: string, value: string) => setKV(key, value),
-      delete: (key: string) => deleteKV(key),
-      list: (pattern: string, returnValues?: boolean) =>
-        listKV(pattern, returnValues),
-      flush: () => flushKV(),
-    },
-    init,
-    clearError: () => set({ error: null }),
-  };
-});
+    throw new Error(
+      typeof error === "string"
+        ? error
+        : "The resume could not be analyzed.",
+    );
+  }
+};
+
+    const img2txt = async (
+      image: string | File | Blob,
+      testMode?: boolean,
+    ) => {
+      const puter = getPuter();
+
+      if (!puter) {
+        throw new Error(
+          "Puter.js is not available.",
+        );
+      }
+
+      return puter.ai.img2txt(
+        image,
+        testMode,
+      );
+    };
+
+    const getKV = async (
+      key: string,
+    ) => {
+      const puter = getPuter();
+
+      if (!puter) {
+        throw new Error(
+          "Puter.js is not available.",
+        );
+      }
+
+      return puter.kv.get(key);
+    };
+
+    const setKV = async (
+      key: string,
+      value: string,
+    ) => {
+      const puter = getPuter();
+
+      if (!puter) {
+        throw new Error(
+          "Puter.js is not available.",
+        );
+      }
+
+      return puter.kv.set(
+        key,
+        value,
+      );
+    };
+
+    const deleteKV = async (
+      key: string,
+    ) => {
+      const puter = getPuter();
+
+      if (!puter) {
+        throw new Error(
+          "Puter.js is not available.",
+        );
+      }
+
+      return puter.kv.delete(key);
+    };
+
+    const listKV = async (
+      pattern: string,
+      returnValues = false,
+    ) => {
+      const puter = getPuter();
+
+      if (!puter) {
+        throw new Error(
+          "Puter.js is not available.",
+        );
+      }
+
+      return puter.kv.list(
+        pattern,
+        returnValues,
+      );
+    };
+
+    const flushKV = async () => {
+      const puter = getPuter();
+
+      if (!puter) {
+        throw new Error(
+          "Puter.js is not available.",
+        );
+      }
+
+      return puter.kv.flush();
+    };
+
+    return {
+      isLoading: true,
+      error: null,
+      puterReady: false,
+
+      auth: {
+        user: null,
+        isAuthenticated: false,
+        signIn,
+        signOut,
+        refreshUser,
+        checkAuthStatus,
+        getUser: () =>
+          get().auth.user,
+      },
+
+      fs: {
+        write,
+        read: readFile,
+        readDir,
+        upload,
+        delete: deleteFile,
+      },
+
+      ai: {
+        chat,
+        feedback,
+        img2txt,
+      },
+
+      kv: {
+        get: getKV,
+        set: setKV,
+        delete: deleteKV,
+        list: listKV,
+        flush: flushKV,
+      },
+
+      init,
+
+      clearError: () => {
+        set({
+          error: null,
+        });
+      },
+    };
+  });
